@@ -1,0 +1,104 @@
+# Báo cáo Lab: Self evolving Agentic
+
+## 1. Thông tin nhóm và cấu hình
+
+| Họ tên | Mã sinh viên | Phần đóng góp |
+|---|---|---|
+| Nguyễn Quốc Đạt | 2A202602369 | Thực hiện lab với hỗ trợ Codex: harness, thí nghiệm và báo cáo theo GUIDE. |
+
+- Mô hình chính: `LAB_MODEL=openai:gpt-6-luna`; `LAB_TEMPERATURE=0`, `reasoning_effort="none"`, `recursion_limit=60`. Cấu hình reasoning được áp dụng nhất quán trong TODO build_agent và curate_skills; không sửa model.py có sẵn. Dùng cùng model cho main, workers và curator.
+- Deep Agents 0.7.21; Windows PowerShell chuẩn bị môi trường, Docker Linux Python 3.11 chạy harness vì cần `/bin/sh`. Native `.venv` là Python 3.11.9. Backend shell timeout 120 giây, inherit_env=False.
+- Trước freeze: 6 lượt baseline/subagents learn hợp lệ + 3 lượt skills-auto development. Curator Luna thử 2 lần: lần đầu API 400 do reasoning mặc định với temperature 0; lần thứ hai cùng reasoning none như harness thành công, sinh 3 skills. Xóa/sửa tay 0 skills Luna.
+- Commit của tag `freeze`: sẽ bổ sung sau tạo tag. Chưa đọc/check/chạy evaluation ở thời điểm ghi H1–H3.
+- Kết quả gpt-4.1-mini và skills của nó được lưu riêng `results/diagnostics/gpt-4.1-mini-learning/` theo yêu cầu đổi model; không dùng trong bảng chính hoặc đầu vào curator Luna. Hai tool smoke tests gpt-5.6-luna và gpt-6-luna đều thành công (131 và 50 token), không tính vào token benchmark.
+
+## 2. Giả thuyết (commit TRƯỚC tag `freeze`, Phần 4.0)
+
+- H1 (subagents so với baseline): Dự đoán subagents cải thiện điểm evaluation trung bình vừa phải nhưng tăng token. Learn code giữ 7/10, data giảm 5/8 xuống 4/8, logs tăng 2/9 lên 6/9; cần reviewer kiểm chứng sau handoff, giao việc không bảo đảm đúng schema/định nghĩa. Căn cứ GUIDE 2.3 và guides/pseudocode/02_subagents.md về vai trò, context truyền và kiểm chứng kết quả.
+- H2 (skills-auto so với baseline): Dự đoán skills-auto có điểm evaluation trung bình cao nhất và hơn baseline, chủ yếu nhờ code; ở development code tăng 7/10 lên 10/10 sau đọc skill. Data/logs skills chỉ nói units/schema khi được yêu cầu, chưa ghi đầy đủ quy ước Acme nên khó cải thiện rule checks ẩn của hai miền này. Căn cứ guides/pseudocode/05_skill_quality.md mục 1, 3, 5 về progressive disclosure, tính đúng và việc đọc/làm theo skill; phân loại lỗi mục 4.
+- H3 (tác vụ học so với tác vụ đánh giá): Dự đoán mức cải thiện trên evaluation nhỏ hơn learning vì quy ước mới không có trong feedback; skills code có thể chuyển giao quy trình kiểm chứng nhưng không tự biết luật mới. Giữ cả development và frozen learn để đo nhiễu, không quy mọi khác biệt thành học. Căn cứ README mục thiết kế thí nghiệm, GUIDE 4.2 về freeze và sao lưu lượt development.
+
+## 3. Làm quen Deep Agents (Phần 0.3)
+
+1. **Công cụ mặc định:** `python scripts/tour.py` liệt kê 9 công cụ: `ls`, `read_file`, `write_file`, `edit_file`, `delete`, `glob`, `grep`, `execute`, `task`. Công cụ `execute` chạy lệnh shell trong sandbox, trả về stdout/stderr và mã thoát.
+2. **Subagent `general-purpose`:** Theo mô tả của `task`, subagent này nghiên cứu câu hỏi phức tạp, tìm tệp/nội dung và thực hiện tác vụ nhiều bước; có các công cụ như tác tử chính. Mỗi lần gọi mặc định không có trạng thái: subagent chỉ nhận prompt được gửi và trả về một báo cáo cuối, không tự nhận toàn bộ hội thoại của tác tử chính. Vì vậy, lời giao việc cần chứa đủ yêu cầu, quy tắc, đường dẫn và định dạng kết quả. Tác tử chính tổng hợp báo cáo cho người dùng.
+3. **Chỉ dẫn hành vi từ mô tả công cụ:** Tour in system prompt mặc định là `''` (rỗng). Câu từ `task`: “Put full detail in the prompt and state exactly what it should return — unless an agent type below says it inherits your conversation instead.” Câu từ `execute`: “Use read_file rather than cat/head/tail.” Đây là chỉ dẫn từ mô tả công cụ, không phải system prompt do sinh viên viết.
+
+**Kiến trúc đã cài đặt:** agent chính điều phối bằng `task`; ba worker `explorer` (đọc đặc tả), `implementer` (sửa/chạy kiểm tra), `reviewer` (kiểm chứng độc lập). Chúng dùng cùng backend tệp/shell trong sandbox; không có message queue riêng. Curator là bước học ngoại tuyến, không phải worker trong mỗi lượt tác vụ. Runner ghi trace, token và kết quả check; `recursion_limit=60` và timeout shell 120 giây giới hạn thực thi. Không đồng nhất giới hạn recursion với số lần giao việc.
+
+## 4. Đường cơ sở và phân loại lỗi (Phần 2.2)
+
+Chỉ dùng baseline Luna learning hợp lệ; lỗi API và CRLF của lượt chẩn đoán không thuộc taxonomy reasoning.
+
+| Tác vụ | Check thất bại | Nhóm lỗi (A-G) | Bằng chứng (trích ngắn từ `detail` hoặc vết) |
+|---|---|---|---|
+| code-learn | `rule_type_hints` | E | RULE: every public function (name not starting with '_') in the package has type annotations on all parameters and on the return value. |
+| code-learn | `rule_regression_tests` | E | RULE: add tests/test_regressions.py with one test function per bug you fixed (at least 3); the file must pass. |
+| code-learn | `rule_changelog` | E | RULE: record each fix in CHANGELOG.md under the heading '## Unreleased' as a bullet '- fix(<function name>): <short description>' (at least 3 bullets). |
+| data-learn | `rule_money_in_cents` | E | RULE: money values in answer.json are integer cents (1606.67 USD is written 160667). |
+| data-learn | `rule_meta_block` | E | RULE: answer.json has an object `meta` = {"source": <input file name>, "rows_in": <number of data rows in the input file, duplicates included>, "rows_used": <number of distinct orders with a known amount>}. |
+| data-learn | `rule_clean_csv` | E | RULE: write workspace/clean.csv with the header order_id,timestamp_utc,region,amount_cents; one row per distinct order with a known amount; timestamp_utc as YYYY-MM-DDTHH:MM:SSZ (UTC); region in canonical spelling (North, South, East, West); amount in integer cents. |
+| logs-learn | `timestamps_utc` | D/B | 23/25 timestamps match |
+| logs-learn | `exception_fields` | D/B | 2 wrong `exception` values |
+| logs-learn | `repeat_counts` | D/B | 2 wrong `repeat_count` values |
+| logs-learn | `counts_by_service` | D/B | counts_by_service: wrong values |
+| logs-learn | `rule_service_names` | E | RULE: service names in the output are lower-case with '-' replaced by '_' (payment-service -> payment_service). |
+| logs-learn | `rule_sorted_errors` | E | RULE: `errors` is sorted by service, then by timestamp_utc, ascending. |
+| logs-learn | `rule_schema_header` | E | RULE: the top-level object has "schema_version": 2 and "generated_by": "log-triage". |
+
+Nhóm E chiếm 9/13 check thất bại (69.2%): quy ước ẩn chưa có trong prompt/README được đọc. Có 4 lỗi kỹ thuật logs; JSON viết thủ công thay vì parser kiểm chứng, chỉ 23/25 timestamps khớp và 2 exception/repeat_count sai. Baseline đạt kỹ thuật 14/18, quy ước 0/9. Code đạt 7/7 technical checks và data 5/5 nên chưa có bằng chứng lỗi A–D trong hai miền này; không khẳng định toàn bộ baseline yếu về kỹ thuật. Trace data dùng csv/datetime, kiểm đếm 101 rows, 94 unique và 7 duplicates; đây là bằng chứng kiểm chứng có thực. Chưa có bằng chứng vá triệu chứng C hoặc báo tạo tệp không tồn tại F ở baseline hợp lệ. Skill có thể chuyển quy ước E thành checklist; skill logs cần xử lý toàn bộ entry, timezone và repetition để giảm D/B.
+
+## 5. Điều kiện `subagents` (Phần 2.3)
+
+- Định nghĩa 3 worker: explorer đọc đặc tả không sửa; implementer sửa nguyên nhân và chạy kiểm tra; reviewer kiểm chứng độc lập không sửa. Main sử dụng task, không có coordinator/message queue riêng.
+- Code gọi explorer 1 + implementer 1; data gọi explorer 1 + general-purpose 2; logs gọi explorer 1 + reviewer 1. Không phải mọi worker tùy chỉnh đều được gọi, built-in general-purpose vẫn tồn tại.
+- Code truyền docstrings, đường dẫn và không sửa tests; main tự chạy shell kiểm tra sau worker. Data truyền timezone và missing sentinel nhưng lời giao việc không nhấn mạnh north_q1_orders chỉ đếm orders tham gia revenue: worker và main đếm 13 thay vì 10 dù revenue đúng. Main tự tính lại row counts/metrics nhưng lặp cùng lỗi diễn giải, cho thấy thêm kiểm tra không đủ nếu tiêu chí sai.
+- Logs giao explorer nhiệm vụ tạo errors.json dù role explorer chỉ đọc: phạm vi giao việc lệch vai trò; reviewer kiểm tra độc lập, kết quả technical đạt 6/6 nhưng quy ước vẫn 0/3. Những quy ước Acme không hiện trong dữ liệu nên nhắc chung tên Acme không truyền được nội dung luật.
+- Trace chỉ luồng main và báo cáo worker; token callback gồm cả worker. Không khẳng định mọi hành động bên trong worker được quan sát.
+
+| Tác vụ | baseline → subagents (điểm) | Token baseline → subagents | Giây baseline → subagents |
+|---|---|---|---|
+| code-learn | 7/10 → 7/10 | 75383 → 102878 | 46.2 → 89.4 |
+| data-learn | 5/8 → 4/8 | 29861 → 123507 | 15.3 → 92.3 |
+| logs-learn | 2/9 → 6/9 | 21114 → 98926 | 19.2 → 71.0 |
+
+## 6. Self-evolving: skill do curator sinh (Phần 3)
+
+- Curator Luna 2 lần thử, 1 lần trả đầu ra: lỗi API lần đầu chưa sinh skill, sửa reasoning none rồi gọi lại. 3 skills giữ nguyên đầu ra, xóa 0 và sửa tay 0; không sử dụng skills mini đã lưu riêng. Mỗi skill validate cấu trúc và eval_markers trước ghi. Tính hợp lệ không đồng nghĩa đầy đủ quy tắc.
+
+| Skill | Tổng quát hay riêng cho tác vụ học? | Đúng hay sai (nêu chỗ sai nếu có) | Độ dài, `description` và `skills_read` ở Phần 3.4 |
+|---|---|---|---|
+| `code-fix-completion` | Quy trình bugfix tổng quát; tên regression/changelog là quy ước được phép, không có tên hàm/đáp án cụ thể. | Đúng với learning feedback và development đạt 3/3 rule. Bước annotate ưu tiên hàm được sửa, phải kiểm tra cả package để tránh thiếu public function khác. | Body 5 dòng; description 96 ký tự: Use when fixing bugs in a typed package that requires regression coverage and changelog entries. |
+| `data-output-integrity` | Quy trình tabular data tổng quát, không hardcode dữ liệu/metrics. | Không thấy hướng dẫn tính sai, nhưng cents chỉ khi required và metadata không có schema meta cụ thể; chưa mã hóa đầy đủ 3 Acme rules nên development vẫn 0/3 rule. | Body 6 dòng; description 84 ký tự: Use when transforming tabular data into structured answer files or cleaned datasets. |
+| `log-triage-aggregation` | Quy trình multiline/repetition tổng quát. | Parser/count từ cùng entries đúng; chỉ nói normalize/sort/metadata theo schema mà không ghi service underscore/schema_version 2/generated_by, nên chưa giải quyết rule ẩn. Có dòng thừa === END do delimiter thiếu === ở đầu ra; giữ nguyên, không ảnh hưởng validator nhưng giảm độ sạch. | Body 8 dòng; description 97 ký tự: Use when converting logs with multiline entries and repetition markers into structured summaries. |
+
+Development: code-learn: 10/10, skills_read=1, token=79163; data-learn: 4/8, skills_read=2, token=42500; logs-learn: 6/9, skills_read=1, token=60663. Code đọc code-fix-completion rồi tạo regression tests/type hints/changelog; data đọc 2 skills nhưng vẫn thiếu quy ước; logs đọc 1 skill và technical đạt 6/6, rules 0/3. Sao lưu development ở results/skills-auto-dev trước rerun chính thức.
+
+## 7. Kết quả so sánh (Phần 4.3, 4.4)
+
+Chưa chạy evaluation trước freeze; bảng chính và breakdown sẽ bổ sung sau lượt chính thức.
+
+## 8. Phân tích
+
+Sẽ đối chiếu đủ sáu câu hỏi sau freeze bằng run.json/trace, bao gồm development và frozen learn.
+
+## 9. Hạn chế và tính hợp lệ
+
+1. Ba tác vụ mỗi vai trò, một lượt mỗi cấu hình: không có khoảng tin cậy hoặc bằng chứng thống kê rộng.
+2. Chỉ một model và reasoning none; temperature 0 vẫn có nhiễu, không suy rộng sang model lớn/reasoning khác.
+3. Trace chỉ main, snippet cắt 1500 ký tự; không quan sát đầy đủ hoạt động worker hoặc toàn bộ artifact.
+4. Quy ước do giảng viên thiết kế và feedback learning được cung cấp curator: lợi ích cùng miền không chứng minh học kỹ năng tổng quát.
+5. Token run gồm main+workers nhưng không gồm curator, smoke tests hoặc diagnostics; không quy đổi USD khi chưa có billing/pricing kiểm chứng.
+
+## 10. Kết luận
+
+Chờ evaluation chính thức; chưa suy đoán kết quả ngoài giả thuyết đã ghi.
+
+## Phụ lục
+
+- Thứ tự lệnh theo GUIDE: setup/tour → implement TODOs → pytest → baseline/subagents learn → curator → skills-auto learn → hypotheses → freeze → baseline/subagents eval → skills-auto all → verify_freeze → compare/check_breakdown → báo cáo cuối.
+- Môi trường Docker dùng image day20-lab:local, Python 3.11, /bin/sh và Git. Model key chỉ trong .env bị ignore và env-file tạm ignored; backend shell không kế thừa môi trường. Không in hoặc commit key.
+- Chuyển model theo yêu cầu: 5.6-luna ban đầu có lỗi tool reasoning; mini đã chạy 9 learn hợp lệ + 1 curator, lưu riêng; smoke 5.6-luna none và 6-luna none thành công rồi chọn 6-luna cho toàn bộ bảng chính. Không trộn hai model hoặc đưa learning mini vào curator Luna.
+- Hai code learn mini đầu bị CRLF false failure tests_not_modified: test chuẩn Git LF có hash đúng checker, checkout Windows CRLF khác bytes. Xuất 35 file tasks nguyên blob HEAD sang fixture tạm, mount read-only, không sửa source tasks/tests/checker trong repo. Không đọc nội dung evaluation trước freeze. Những lần chẩn đoán lưu results/diagnostics riêng, không dùng taxonomy hoặc bảng chính.
+- Native pytest ban đầu PermissionError Temp; dùng --basetemp trong .venv. Harness thực chạy Linux. verify_freeze cũng chạy Linux vì hash_skills dùng chuỗi path tương đối theo hệ điều hành (Windows backslash khác Linux slash).
+- Không làm phần mở rộng tùy chọn; không push remote.

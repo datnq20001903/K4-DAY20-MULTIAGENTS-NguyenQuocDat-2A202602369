@@ -1,0 +1,77 @@
+{
+  "task": "logs-learn",
+  "condition": "baseline",
+  "role": "learn",
+  "timestamp": "2026-10-06T04:37:45.358007+00:00",
+  "error": null,
+  "skills_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "seconds": 19.2,
+  "tokens": {
+    "input": 18919,
+    "output": 2195,
+    "total": 21114
+  },
+  "tool_calls": 4,
+  "subagent_calls": 0,
+  "skills_read": 0,
+  "skills_modified": false,
+  "final_message": [
+    {
+      "type": "text",
+      "text": "Created `workspace/errors.json` with ERROR and CRITICAL entries only. Converted timestamps to UTC, captured traceback endings, applied repeat counts, and summed counts by service.",
+      "annotations": [],
+      "id": "msg_0dc795dc11933d18006ac47b1d532c87d096260fcc6a3aa06f",
+      "phase": "final_answer"
+    }
+  ],
+  "score": 0.2222222222222222,
+  "passed": 2,
+  "total": 9,
+  "checks": [
+    {
+      "name": "valid_structure",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "entry_count",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "timestamps_utc",
+      "passed": false,
+      "detail": "23/25 timestamps match"
+    },
+    {
+      "name": "exception_fields",
+      "passed": false,
+      "detail": "2 wrong `exception` values"
+    },
+    {
+      "name": "repeat_counts",
+      "passed": false,
+      "detail": "2 wrong `repeat_count` values"
+    },
+    {
+      "name": "counts_by_service",
+      "passed": false,
+      "detail": "counts_by_service: wrong values"
+    },
+    {
+      "name": "rule_service_names",
+      "passed": false,
+      "detail": "RULE: service names in the output are lower-case with '-' replaced by '_' (payment-service -> payment_service)."
+    },
+    {
+      "name": "rule_sorted_errors",
+      "passed": false,
+      "detail": "RULE: `errors` is sorted by service, then by timestamp_utc, ascending."
+    },
+    {
+      "name": "rule_schema_header",
+      "passed": false,
+      "detail": "RULE: the top-level object has \"schema_version\": 2 and \"generated_by\": \"log-triage\"."
+    }
+  ]
+}

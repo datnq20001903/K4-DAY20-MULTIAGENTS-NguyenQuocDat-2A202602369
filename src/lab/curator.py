@@ -68,7 +68,66 @@ def curate_skills(results_dir="results", source_condition="baseline", out_dir=No
     model mặc định: make_model() (lab.model).
     Trả về: danh sách đường dẫn SKILL.md đã ghi.
     """
-    raise NotImplementedError("TODO: cài đặt curate_skills (xem guides/pseudocode/04_curator.md)")
+    import json
+
+    from .model import make_model
+    from .tasks import ROOT
+    from langchain_openai import ChatOpenAI
+
+    if max_skills < 0:
+        raise ValueError("max_skills must not be negative")
+    if max_skills == 0:
+        return []
+    runs = []
+    for file in sorted((Path(results_dir) / source_condition).glob("*/run.json")):
+        run = json.loads(file.read_text(encoding="utf-8"))
+        if run.get("role") != "learn":
+            continue
+        failed = [
+            {"name": check["name"], "detail": check.get("detail", "")}
+            for check in run.get("checks", []) if check.get("passed") is False
+        ]
+        trace_file = file.with_name("trace.md")
+        trace = trace_file.read_text(encoding="utf-8")[-6000:] if trace_file.exists() else ""
+        runs.append({"task": run["task"], "failed_checks": failed, "trace": trace})
+    if not any(run["failed_checks"] for run in runs):
+        print("Warning: no failed checks in learning tasks; no model call made.")
+        return []
+    prompt = (
+        "Write procedural SKILLs for an engineering agent from the learning-run feedback below. "
+        f"Produce at most {max_skills} short, generalizable skills that prevent common process failures "
+        "on NEW tasks of the same kind. The feedback states violated rules, not an answer key. "
+        "Do not include task IDs, task-specific input filenames, functions, columns, answers or numbers. "
+        "Names explicitly required by reusable organizational conventions in the feedback are allowed. "
+        "Do not use evaluation material. Each skill must have YAML frontmatter with a lowercase "
+        "hyphenated name and a description stating when to use it, then at most 40 lines of actionable "
+        "instructions and verification steps. Do not propose incorrect shortcuts or memorized answers. "
+        "Use exactly this output format for every skill:\n"
+        "=== SKILL: <name> ===\n---\nname: <name>\ndescription: Use when ...\n---\n"
+        "<instructions>\n=== END ===\n\nLearning evidence:\n"
+        + json.dumps(runs, ensure_ascii=False, indent=2)
+    )
+    chat_model = make_model() if model is None else model
+    if isinstance(chat_model, ChatOpenAI) and chat_model.model_name in {"gpt-5.6-luna", "gpt-6-luna"}:
+        chat_model = chat_model.model_copy(update={"reasoning_effort": "none"})
+    response = chat_model.invoke(prompt)
+    reply = response.content
+    if not isinstance(reply, str):
+        reply = "\n".join(block.get("text", "") for block in reply if isinstance(block, dict))
+    destination = Path(out_dir) if out_dir is not None else ROOT / "skills" / "auto"
+    written = []
+    seen = set()
+    for name, text in parse_skill_blocks(reply):
+        if len(written) >= max_skills:
+            break
+        if name in seen or validate_skill(text, expected_name=name):
+            continue
+        file = destination / name / "SKILL.md"
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(text + "\n", encoding="utf-8")
+        written.append(file)
+        seen.add(name)
+    return written
 
 
 if __name__ == "__main__":

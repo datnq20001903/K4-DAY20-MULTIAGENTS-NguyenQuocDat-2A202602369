@@ -6,10 +6,17 @@ Chạy thật:   python -m lab.runner --condition baseline --tasks learn
 """
 import argparse
 import json
+import os
+import re
+import tempfile
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, ToolMessage
 
+from .agent import build_agent
 from .grading import grade                                                      # có sẵn
 from .tasks import ROOT, get_task, hash_dir, list_tasks, prepare_sandbox         # có sẵn
 
@@ -65,7 +72,75 @@ def run_task(task_id: str, condition: str, results_dir="results", model=None, re
     Lỗi khi chạy tác tử KHÔNG được làm chương trình dừng: ghi vào `error` và vẫn chấm điểm.
     Sandbox là thư mục tạm NGOÀI kho mã nguồn và phải được xóa sau khi chạy.
     """
-    raise NotImplementedError("TODO 1: cài đặt run_task (xem guides/pseudocode/03_runner.md)")
+    if condition not in CONDITIONS:
+        raise ValueError(f"unknown condition: {condition}")
+    if recursion_limit < 1:
+        raise ValueError("recursion_limit must be positive")
+    cfg = CONDITIONS[condition]
+    task = get_task(task_id)
+    skills_dir = ROOT / cfg["skills_dir"] if cfg["skills_dir"] else None
+    out = Path(results_dir) / condition / task_id
+    out.mkdir(parents=True, exist_ok=True)
+    record = {
+        "task": task_id, "condition": condition, "role": task.role,
+        "timestamp": datetime.now(timezone.utc).isoformat(), "error": None,
+    }
+    usage = UsageMetadataCallbackHandler()
+    messages = []
+    final = ""
+
+    with tempfile.TemporaryDirectory(prefix="day20-lab-") as directory:
+        sandbox = Path(directory).resolve()
+        if sandbox == ROOT.resolve() or ROOT.resolve() in sandbox.parents:
+            raise RuntimeError("task sandbox must be outside the repository")
+        prepare_sandbox(task, sandbox, skills_dir)
+        before = hash_dir(sandbox / "skills")
+        record["skills_sha256"] = before
+        started = time.perf_counter()
+        try:
+            agent = build_agent(
+                sandbox, mode=cfg["mode"], use_skills=skills_dir is not None, model=model,
+            )
+            started = time.perf_counter()
+            result = agent.invoke(
+                {"messages": [{"role": "user", "content": task.instruction}]},
+                config={"callbacks": [usage], "recursion_limit": recursion_limit},
+            )
+            messages = result["messages"]
+            final = messages[-1].content if messages else ""
+        except Exception as exc:
+            record["error"] = f"{type(exc).__name__}: {exc}"
+        record["seconds"] = round(time.perf_counter() - started, 1)
+        record["tokens"] = {
+            "input": sum(item.get("input_tokens", 0) for item in usage.usage_metadata.values()),
+            "output": sum(item.get("output_tokens", 0) for item in usage.usage_metadata.values()),
+            "total": sum(item.get("total_tokens", 0) for item in usage.usage_metadata.values()),
+        }
+        calls = [call for message in messages if isinstance(message, AIMessage) for call in message.tool_calls]
+        read_skills = set()
+        for call in calls:
+            if call["name"] == "read_file":
+                path = str(call.get("args", {}).get("file_path", "")).replace("\\", "/")
+                match = re.search(r"(?:^|/)skills/([^/]+)/", path)
+                if match:
+                    read_skills.add(match.group(1))
+        record["tool_calls"] = len(calls)
+        record["subagent_calls"] = sum(call["name"] == "task" for call in calls)
+        record["skills_read"] = len(read_skills)
+        record["skills_modified"] = hash_dir(sandbox / "skills") != before
+        record["final_message"] = final
+        record.update(grade(task, sandbox / "workspace"))
+        trace = render_trace(messages)
+
+    # An API exception may repeat a credential. Redact complete secret values before saving evidence.
+    payload = json.dumps(record, ensure_ascii=False, indent=2)
+    for name, value in os.environ.items():
+        if value and len(value) >= 8 and any(part in name.upper() for part in ("KEY", "TOKEN", "PASSWORD")):
+            payload = payload.replace(value, "[REDACTED]")
+            trace = trace.replace(value, "[REDACTED]")
+    (out / "trace.md").write_text(trace, encoding="utf-8")
+    (out / "run.json").write_text(payload + "\n", encoding="utf-8")
+    return json.loads(payload)
 
 
 def main(argv=None):

@@ -1,0 +1,77 @@
+{
+  "task": "logs-learn",
+  "condition": "skills-auto",
+  "role": "learn",
+  "timestamp": "2026-10-06T04:40:44.986219+00:00",
+  "error": null,
+  "skills_sha256": "3a7f787eac1849bced108823ad52a94cc692844085599911b304b8cc5294e407",
+  "seconds": 35.6,
+  "tokens": {
+    "input": 58016,
+    "output": 2647,
+    "total": 60663
+  },
+  "tool_calls": 9,
+  "subagent_calls": 0,
+  "skills_read": 1,
+  "skills_modified": false,
+  "final_message": [
+    {
+      "type": "text",
+      "text": "Created `workspace/errors.json` with ERROR/CRITICAL entries, UTC timestamps, attached traceback exceptions, and repeat counts. Verified the JSON and service totals.",
+      "annotations": [],
+      "id": "msg_0ea89b7a95b856e9006ac47be16d2487d0beba13d0728f8841",
+      "phase": "final_answer"
+    }
+  ],
+  "score": 0.6666666666666666,
+  "passed": 6,
+  "total": 9,
+  "checks": [
+    {
+      "name": "valid_structure",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "entry_count",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "timestamps_utc",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "exception_fields",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "repeat_counts",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "counts_by_service",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "rule_service_names",
+      "passed": false,
+      "detail": "RULE: service names in the output are lower-case with '-' replaced by '_' (payment-service -> payment_service)."
+    },
+    {
+      "name": "rule_sorted_errors",
+      "passed": false,
+      "detail": "RULE: `errors` is sorted by service, then by timestamp_utc, ascending."
+    },
+    {
+      "name": "rule_schema_header",
+      "passed": false,
+      "detail": "RULE: the top-level object has \"schema_version\": 2 and \"generated_by\": \"log-triage\"."
+    }
+  ]
+}
