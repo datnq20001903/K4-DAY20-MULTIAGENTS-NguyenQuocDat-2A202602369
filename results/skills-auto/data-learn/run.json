@@ -1,0 +1,72 @@
+{
+  "task": "data-learn",
+  "condition": "skills-auto",
+  "role": "learn",
+  "timestamp": "2026-10-06T04:49:35.393277+00:00",
+  "error": null,
+  "skills_sha256": "3a7f787eac1849bced108823ad52a94cc692844085599911b304b8cc5294e407",
+  "seconds": 21.1,
+  "tokens": {
+    "input": 45502,
+    "output": 880,
+    "total": 46382
+  },
+  "tool_calls": 10,
+  "subagent_calls": 0,
+  "skills_read": 2,
+  "skills_modified": false,
+  "final_message": [
+    {
+      "type": "text",
+      "text": "Created `workspace/answer.json`. I kept one row per order ID, normalized region names and timestamps, excluded missing amounts from revenue, and counted 7 duplicate rows removed.",
+      "annotations": [],
+      "id": "msg_0a345a7c35d07bad006ac47de5760887d0864afb3bae428966",
+      "phase": "final_answer"
+    }
+  ],
+  "score": 0.625,
+  "passed": 5,
+  "total": 8,
+  "checks": [
+    {
+      "name": "north_q1_revenue",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "north_q1_orders",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "top_region",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "missing_amount_orders",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "duplicate_rows_removed",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "rule_money_in_cents",
+      "passed": false,
+      "detail": "RULE: money values in answer.json are integer cents (1606.67 USD is written 160667)."
+    },
+    {
+      "name": "rule_meta_block",
+      "passed": false,
+      "detail": "RULE: answer.json has an object `meta` = {\"source\": <input file name>, \"rows_in\": <number of data rows in the input file, duplicates included>, \"rows_used\": <number of distinct orders with a known amount>}."
+    },
+    {
+      "name": "rule_clean_csv",
+      "passed": false,
+      "detail": "RULE: write workspace/clean.csv with the header order_id,timestamp_utc,region,amount_cents; one row per distinct order with a known amount; timestamp_utc as YYYY-MM-DDTHH:MM:SSZ (UTC); region in canonical spelling (North, South, East, West); amount in integer cents."
+    }
+  ]
+}

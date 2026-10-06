@@ -8,8 +8,8 @@
 
 - Mô hình chính: `LAB_MODEL=openai:gpt-6-luna`; `LAB_TEMPERATURE=0`, `reasoning_effort="none"`, `recursion_limit=60`. Cấu hình reasoning được áp dụng nhất quán trong TODO build_agent và curate_skills; không sửa model.py có sẵn. Dùng cùng model cho main, workers và curator.
 - Deep Agents 0.7.21; Windows PowerShell chuẩn bị môi trường, Docker Linux Python 3.11 chạy harness vì cần `/bin/sh`. Native `.venv` là Python 3.11.9. Backend shell timeout 120 giây, inherit_env=False.
-- Trước freeze: 6 lượt baseline/subagents learn hợp lệ + 3 lượt skills-auto development. Curator Luna thử 2 lần: lần đầu API 400 do reasoning mặc định với temperature 0; lần thứ hai cùng reasoning none như harness thành công, sinh 3 skills. Xóa/sửa tay 0 skills Luna.
-- Commit của tag `freeze`: sẽ bổ sung sau tạo tag. Chưa đọc/check/chạy evaluation ở thời điểm ghi H1–H3.
+- Số lượt cuối: 18 chính thức Luna + 3 development Luna; 12 lượt lịch sử/chẩn đoán lưu riêng (9 mini learning, 2 mini code CRLF, 1 Luna API lỗi ban đầu), tổng 33 run.json. Không đặt ngân sách số token cứng; không chạy mở rộng hoặc lặp chọn điểm. Trước freeze có 6 lượt baseline/subagents learn hợp lệ + 3 lượt skills-auto development. Curator Luna thử 2 lần: lần đầu API 400 do reasoning mặc định với temperature 0; lần thứ hai cùng reasoning none như harness thành công, sinh 3 skills. Xóa/sửa tay 0 skills Luna.
+- Commit của tag `freeze`: `1ca4dfe1931c4e12c53a3e6341bb5e5605c959b6`; commit giả thuyết `5009116` đứng trước tag. Không đọc/chạy evaluation trước khi commit H1–H3.
 - Kết quả gpt-4.1-mini và skills của nó được lưu riêng `results/diagnostics/gpt-4.1-mini-learning/` theo yêu cầu đổi model; không dùng trong bảng chính hoặc đầu vào curator Luna. Hai tool smoke tests gpt-5.6-luna và gpt-6-luna đều thành công (131 và 50 token), không tính vào token benchmark.
 
 ## 2. Giả thuyết (commit TRƯỚC tag `freeze`, Phần 4.0)
@@ -76,11 +76,57 @@ Development: code-learn: 10/10, skills_read=1, token=79163; data-learn: 4/8, ski
 
 ## 7. Kết quả so sánh (Phần 4.3, 4.4)
 
-Chưa chạy evaluation trước freeze; bảng chính và breakdown sẽ bổ sung sau lượt chính thức.
+| Task | baseline | subagents | skills-auto |
+|---|---|---|---|
+| code-learn | 7/10 | 7/10 | 10/10 |
+| data-learn | 5/8 | 4/8 | 5/8 |
+| logs-learn | 2/9 | 6/9 | 6/9 |
+| code-eval | 7/11 | 7/11 | 10/11 |
+| data-eval | 5/9 | 4/9 | 5/9 |
+| logs-eval | 1/10 | 6/10 | 6/10 |
+| **Mean score - learning tasks** | 0.52 | 0.62 | 0.76 |
+| **Mean score - evaluation tasks** | 0.43 | 0.56 | 0.69 |
+| **Mean tokens per run** | 36,509 | 134,659 | 61,414 |
+| **Runs that read a skill** | 0/6 | 0/6 | 6/6 |
+
+Kết quả `python scripts/check_breakdown.py` (bản lưu: `report/check_breakdown.txt`):
+
+```text
+condition     role    technical  house rules  mean tokens  read a skill
+baseline      eval     13/18         0/12          30,900      0/3     
+baseline      learn    14/18         0/9           42,119      0/3     
+subagents     eval     17/18         0/12         160,882      0/3     
+subagents     learn    17/18         0/9          108,437      0/3     
+skills-auto   eval     18/18         3/12          50,329      3/3     
+skills-auto   learn    18/18         3/9           72,500      3/3     
+```
+
+- Toàn bộ 18 lượt chính thức có error=null, skills_modified=false và token > 0. Sáu lượt skills-auto đều đọc skill; không có lượt chính thức bị ghi đè để chọn điểm.
+- `python scripts/verify_freeze.py`: checked 6 runs of skill conditions: OK. Bộ skills không đổi sau tag, hashes và timestamps khớp freeze. Linux verifier dùng core.autocrlf=true giống Git Windows để tránh báo khác bytes CRLF của README kỹ năng có sẵn; không thay đổi skills.
+- Full suite: 29 passed in 9.20s (Docker Linux). Các hằng số/helper có sẵn, tests/tasks/scripts và file template vẫn giữ nguyên; kiểm tra SHA-256 và AST trước freeze đạt.
+- Lỗi/chuyển model trước thí nghiệm chính được ghi ở mục 1 và phụ lục, lưu riêng diagnostics. Chúng không thuộc mẫu 18 lượt hoặc taxonomy reasoning.
 
 ## 8. Phân tích
 
-Sẽ đối chiếu đủ sáu câu hỏi sau freeze bằng run.json/trace, bao gồm development và frozen learn.
+1. **Điểm học và đánh giá.** Mean normalized score learning: baseline 0.5157, subagents 0.6222, skills-auto 0.7639. Evaluation tương ứng 0.4306, 0.5603, 0.6882. Subagents tăng learning 10.65 điểm phần trăm, evaluation 12.96; skills tăng 24.81 và 25.76. Không có điều kiện chỉ tăng mean learn mà giảm mean eval trong mẫu này; riêng data subagents giảm ở cả hai vai trò. H1 được số liệu mean hỗ trợ với chi phí lớn; H2 được hỗ trợ. H3 dự đoán mức tăng eval nhỏ hơn learn không được xác nhận: mức tăng skills eval hơi lớn hơn learn. Điểm tuyệt đối eval thấp hơn learn không đồng nghĩa mức cải thiện thấp hơn. Các kết luận chỉ mô tả một lượt trên ba tác vụ.
+
+2. **Technical và rules.** Baseline learn 14/18 technical, 0/9 rules; subagents 17/18, 0/9; skills 18/18, 3/9. Eval tương ứng baseline 13/18, 0/12; subagents 17/18, 0/12; skills 18/18, 3/12. Skills giúp 3 quy ước code cũ cùng quy trình test; parser logs cải thiện technical từ 2/6 learn và 1/6 eval lên 6/6 mỗi vai trò. Data/logs rule checks vẫn fail vì skills chỉ nhắc tuân thủ units/schema/sort được chỉ định, chưa chuyển đủ tên/key/units Acme thành luật cụ thể. Ba rules eval mới `rule_version_bump`, `rule_sorted_keys_format`, `rule_source_line` đều fail trong cả ba điều kiện; chúng không nằm trong learning feedback hay bộ skills. Đây là giới hạn chuyển giao luật mới.
+
+3. **Cơ chế đọc và thực hiện.** Code eval skills_read=1, trace đọc `skills/code-fix-completion/SKILL.md`, tạo `workspace/tests/test_regressions.py`, type hints và CHANGELOG rồi chạy `PYTHONPATH=workspace python -m pytest workspace/tests -q` đạt 6 tests; `rule_regression_tests` chuyển false → true. Trace cũng cho thấy lệnh sai timeout 120000s bị tool từ chối, đường dẫn tests sai rồi import error; agent tự sửa lệnh và kiểm tra lại, nên final score không che dấu những bước thừa. Ngược lại `rule_version_bump` vẫn fail dù đã đọc skill: skill không có quy ước bump version. Data development đọc 2 skills và tự validate JSON nhưng assert north_q1_orders=13 theo cùng diễn giải sai, nên không phát hiện việc đếm cả missing orders; frozen learn lên 5/8 vẫn thiếu cả 3 rules. Skills_read là số tên skill riêng biệt của main, không chứng minh mọi bước được thực hiện.
+
+4. **Token và hiệu quả.** Mean token 6 lượt (giá trị chính xác, bảng compare lấy phần nguyên): baseline 36509.67, subagents 134659.67, skills 61414.67. Subagents dùng 3.69 lần baseline; skills 1.68 lần baseline và 45.6% token subagents. Định nghĩa hiệu quả = mean normalized score toàn 6 tasks × 1000 / mean tokens: baseline=0.01296; subagents=0.00439; skills-auto=0.01182; baseline cao nhất theo tỷ số này, skills có chất lượng cao nhất. Subagents tốn nhiều token hơn skills nhưng điểm thấp hơn trong mẫu, chưa đáng chi phí nếu mục tiêu là điểm/token. Trường hợp subagents data-eval riêng tốn 310692 token nhưng chỉ đạt 4/9 cho thấy delegation lặp có thể tăng chi phí mà không sửa lỗi diễn giải. Không quy đổi USD, không coi token output/input đồng giá, không so latency nhân quả vì có container chạy đồng thời.
+
+5. **Rò rỉ/quá khớp.** Curator chỉ nhận source_condition=baseline, role=learn, failed names/details và trace tail; không nhận run.json hoặc check.py evaluation trước freeze. Mỗi đầu ra được validate eval_markers và safe name; không chứa tên hàm/dữ liệu/đáp án evaluation. Tên tests/test_regressions.py và CHANGELOG.md là quy ước learning được phép. Giả thuyết commit trước freeze và skills giữ nguyên; các luật eval mới đều chưa đạt, phù hợp với giới hạn thông tin. Không phát hiện rò rỉ theo những phép kiểm tra này, nhưng validator chỉ chặn định danh, không chứng minh tuyệt đối mọi dạng rò rỉ hay quá khớp. Data/log skills khá chung, code learning rules chuyển giao tốt; không suy ra tổng quát sang mọi miền.
+
+6. **Nhiễu trên cùng bộ skills.**
+
+| Tác vụ learn | Development | Sau freeze | Thay đổi normalized score |
+|---|---|---|---|
+| code-learn | 10/10 | 10/10 | +0.00 điểm phần trăm |
+| data-learn | 4/8 | 5/8 | +12.50 điểm phần trăm |
+| logs-learn | 6/9 | 6/9 | +0.00 điểm phần trăm |
+
+Mean learning development 0.7222 → frozen 0.7639, tăng 4.17 điểm phần trăm, chỉ data thêm 1 check technical. Bộ skills và hash không đổi; chênh lệch không phải kết quả curator học thêm. Hai lượt là bằng chứng nhiễu/khác đường hành động, không đủ ước lượng variance hoặc confidence interval; không coi mọi chênh lệch nhỏ trong bảng là hiệu ứng chắc chắn.
 
 ## 9. Hạn chế và tính hợp lệ
 
@@ -90,15 +136,55 @@ Sẽ đối chiếu đủ sáu câu hỏi sau freeze bằng run.json/trace, bao 
 4. Quy ước do giảng viên thiết kế và feedback learning được cung cấp curator: lợi ích cùng miền không chứng minh học kỹ năng tổng quát.
 5. Token run gồm main+workers nhưng không gồm curator, smoke tests hoặc diagnostics; không quy đổi USD khi chưa có billing/pricing kiểm chứng.
 
+6. Một số điều kiện độc lập chạy trong container đồng thời để tiết kiệm thời gian; số giây có thể bị ảnh hưởng tranh chấp CPU/API nên không dùng latency làm kết luận nhân quả.
+7. Skills có dòng thừa delimiter và quy tắc có điều kiện chưa đủ cụ thể; validator không phát hiện những thiếu sót ngữ nghĩa này. Hash path/Git newline khác giữa Windows và Linux yêu cầu môi trường kiểm chứng nhất quán.
+
 ## 10. Kết luận
 
-Chờ evaluation chính thức; chưa suy đoán kết quả ngoài giả thuyết đã ghi.
+Với gpt-6-luna reasoning none trong mẫu sáu tác vụ, skills-auto có mean evaluation 0.69, cao hơn subagents 0.56 và baseline 0.43. Skills giúp đủ technical checks và ba quy ước code đã học, chưa giúp ba quy ước evaluation mới. Subagents tăng chất lượng so baseline nhưng dùng nhiều token nhất, trong khi baseline có tỷ số điểm/token cao nhất. Cùng bộ skills vẫn dao động một check data giữa development và frozen nên chưa có kết luận thống kê. Bước tiếp theo là cải thiện việc curator trích xuất schema/units cụ thể từ learning feedback rồi đo một thí nghiệm mới với lặp độc lập và freeze mới.
 
 ## Phụ lục
 
-- Thứ tự lệnh theo GUIDE: setup/tour → implement TODOs → pytest → baseline/subagents learn → curator → skills-auto learn → hypotheses → freeze → baseline/subagents eval → skills-auto all → verify_freeze → compare/check_breakdown → báo cáo cuối.
-- Môi trường Docker dùng image day20-lab:local, Python 3.11, /bin/sh và Git. Model key chỉ trong .env bị ignore và env-file tạm ignored; backend shell không kế thừa môi trường. Không in hoặc commit key.
-- Chuyển model theo yêu cầu: 5.6-luna ban đầu có lỗi tool reasoning; mini đã chạy 9 learn hợp lệ + 1 curator, lưu riêng; smoke 5.6-luna none và 6-luna none thành công rồi chọn 6-luna cho toàn bộ bảng chính. Không trộn hai model hoặc đưa learning mini vào curator Luna.
-- Hai code learn mini đầu bị CRLF false failure tests_not_modified: test chuẩn Git LF có hash đúng checker, checkout Windows CRLF khác bytes. Xuất 35 file tasks nguyên blob HEAD sang fixture tạm, mount read-only, không sửa source tasks/tests/checker trong repo. Không đọc nội dung evaluation trước freeze. Những lần chẩn đoán lưu results/diagnostics riêng, không dùng taxonomy hoặc bảng chính.
-- Native pytest ban đầu PermissionError Temp; dùng --basetemp trong .venv. Harness thực chạy Linux. verify_freeze cũng chạy Linux vì hash_skills dùng chuỗi path tương đối theo hệ điều hành (Windows backslash khác Linux slash).
-- Không làm phần mở rộng tùy chọn; không push remote.
+### Lệnh đã chạy và môi trường tái lập
+
+1. Setup `.venv` Python 3.11, cài requirements và editable; `.env` nằm trong gitignore. Tour dùng model giả, không tiêu token. Windows Temp lỗi quyền được khắc phục bằng basetemp trong `.venv`.
+2. Implement đúng 5 TODO trong 4 module, bảo toàn helpers/prompt. Offline test trước implementation có NotImplementedError; sau implementation suite Docker đạt 29/29. Review harness không thấy vi phạm contract; phạm vi quan sát và redaction nguyên secret vẫn có giới hạn.
+3. Thử Luna tool reasoning trước đó lỗi 400; thử mini và lưu riêng. Theo lựa chọn cuối của sinh viên, smoke gpt-6-luna none gọi ping thành công (50 token); `LAB_MODEL=openai:gpt-6-luna`, LAB_TEMPERATURE=0, reasoning none áp dụng cả agent và curator. Curator lần đầu dùng reasoning mặc định bị 400 temperature, chỉnh tương thích trong TODO rồi thử lại thành công; không sửa model.py.
+4. Learning và curator Luna:
+
+   ```bash
+   python -m lab.runner --condition baseline --tasks learn
+   python -m lab.runner --condition subagents --tasks learn
+   python -m lab.curator
+   python -m lab.runner --condition skills-auto --tasks learn
+   mv results/skills-auto results/skills-auto-dev
+   ```
+
+5. Điền H1–H3 và sections 1–6, kiểm tra hash/protected AST/secret scan trước commit. Chỉ stage source TODOs, skills, results và report, không stage .env.
+
+   ```bash
+   git commit -m hypotheses
+   git commit --allow-empty -m "freeze skills"
+   git tag freeze
+   python -m lab.runner --condition baseline --tasks eval
+   python -m lab.runner --condition subagents --tasks eval
+   python -m lab.runner --condition skills-auto --tasks all
+   python scripts/verify_freeze.py
+   python -m lab.compare > report/table.md
+   python scripts/check_breakdown.py
+   pytest tests -q
+   ```
+
+6. Windows thực chạy các lệnh Python harness bên trong Docker qua helper tạm `.venv/lab-work/run.ps1`, image `day20-lab:local`. Source/tests/scripts và fixtures tasks mount read-only; skills mount read-only cho runner, writable chỉ curator. Results/report mount writable; main process nhận key qua env-file ignored, shell agent inherit_env=False. Helper chỉ dùng local, không nằm trong submission. Tái lập trên Linux clone dùng lệnh README ở trên và Dockerfile gốc; model API có thể không deterministic.
+7. Khác biệt CRLF: test learning trong checkout Windows có CRLF trong khi checker hardcoded Git blob LF; lưu hai lượt code mini chẩn đoán rồi mount 35 task files xuất nguyên HEAD blob từ fixture tạm. Không sửa tasks/tests/checker và không đọc eval content trước freeze. verify_freeze chạy Linux cùng OS hash của runner; Git trong verifier đặt core.autocrlf=true để so sánh README kỹ năng giống cấu hình Git host, không sửa nội dung skills. Khi clone repo trên Linux, Git có thể có newline policy khác; phải giữ nguyên bytes SKILL.md đã dùng hoặc xác minh lại hashes trước tái lập.
+8. Kết quả kiểm tra cuối: 29 passed in 9.20s; checked 6 runs of skill conditions: OK; 18 official run.json/trace.md + 3 development; mọi official error=null, skills_modified=false; ba skills không sửa tay; template/tests/tasks/scripts/protected helpers không đổi. Phần 6 mở rộng tùy chọn chưa làm. Các commit local không được push remote trong phiên này.
+
+### Tài liệu tham khảo đã sử dụng
+
+- README.md: thiết kế ba điều kiện, learn/eval và giới hạn xem evaluation.
+- GUIDE.md: thứ tự checkpoint, taxonomy A–G, curator, hypotheses và freeze.
+- RUBRIC.md: phạm vi bảo vệ, yêu cầu đủ artifacts và phân tích sáu câu hỏi.
+- guides/pseudocode/01_agent.md, 02_subagents.md, 03_runner.md, 04_curator.md: contract triển khai.
+- guides/pseudocode/05_skill_quality.md: cấu trúc, progressive disclosure và đánh giá nội dung skill.
+
+Không trích dẫn kết quả paper hoặc giá model chưa được kiểm chứng. H1–H3 ở commit trước tag giữ nguyên trong báo cáo cuối; phần 8 nêu rõ giả thuyết nào phù hợp hoặc không phù hợp dữ liệu.
